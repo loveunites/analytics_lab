@@ -1,64 +1,53 @@
 'use strict';
-
-const sendEvent = (eventName, parameters = {}) => {
-  if (typeof gtag === 'function') {
-    gtag('event', eventName, parameters);
-  }
-};
-
-// 1. Клик по пункту меню
-document.querySelectorAll('nav a, header a').forEach((link) => {
-  link.addEventListener('click', () => {
-    sendEvent('nav_click', {
-      link_text: link.textContent.trim(),
-      link_url: link.href
-    });
-  });
-});
+// Итоговый js/script.js после темы 7: форма заявок + CTA из темы 6.
+// Google Tag устанавливается отдельно в head каждой HTML-страницы.
 (() => {
   const leadForm = document.querySelector('#lead-form');
   if (!leadForm) return;
-  const defaults = {
-  utm_source: 'direct',
-  utm_medium: 'none',
-  utm_campaign: 'not_set'
-};
-for (const [key, fallback] of Object.entries(defaults)) {
-  leadForm.elements.namedItem(key).value =
-    params.get(key)?.trim() || fallback;
-}
-  const params = new URLSearchParams(location.search);
-  // Заполнение UTM и обработчик submit — внутри.
+  const params = new URLSearchParams(window.location.search);
+  const defaults = {utm_source:'direct', utm_medium:'none', utm_campaign:'not_set'};
+  for (const [key, fallback] of Object.entries(defaults)) {
+    leadForm.elements.namedItem(key).value = params.get(key)?.trim() || fallback;
+  }
+  const requestId = leadForm.elements.namedItem('request_id');
+  leadForm.addEventListener('submit', event => {
+    // Это защита от случайной отправки неполностью настроенного примера.
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(leadForm.action)) {
+      event.preventDefault();
+      document.querySelector('#form-status').textContent = 'Сначала укажите URL опубликованного Apps Script Web App.';
+      return;
+    }
+    // Повторная доставка той же заявки сохраняет ID. Новый ID — после reset.
+    if (!requestId.value) requestId.value = 'REQ-' + crypto.randomUUID().toUpperCase();
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'generate_lead', {lead_source:'contact_form'});
+    }
+    document.querySelector('#form-status').textContent =
+      'POST отправляется. Подтвердите сохранение по request_id в таблице: ' + requestId.value;
+    // На штатном пути preventDefault() НЕ вызываем: браузер отправляет POST.
+    // Событие GA4 отражает попытку отправки, а не ответ сервера.
+  });
+  leadForm.addEventListener('reset', () => {
+    setTimeout(() => {
+      requestId.value = '';
+      for (const [key, fallback] of Object.entries(defaults)) {
+        leadForm.elements.namedItem(key).value = params.get(key)?.trim() || fallback;
+      }
+      document.querySelector('#form-status').textContent = 'Можно заполнить новую заявку.';
+    }, 0);
+  });
 })();
-// 2. Визит по UTM-ссылке
-const params = new URLSearchParams(window.location.search);
-const utmSource = params.get('utm_source');
-const utmMedium = params.get('utm_medium');
-const utmCampaign = params.get('utm_campaign');
 
-if (utmSource || utmMedium || utmCampaign) {
-  sendEvent('utm_visit', {
-    utm_source: utmSource || '(not set)',
-    utm_medium: utmMedium || '(not set)',
-    utm_campaign: utmCampaign || '(not set)',
-    landing_page: window.location.href
+// CTA из существующего сайта темы 6 — без изменений.
+const programCta = document.querySelector('#program-cta');
+if (programCta) {
+  programCta.addEventListener('click', () => {
+    document.querySelector('#program-preview').hidden = false;
+    if (typeof gtag === 'function') {
+      gtag('event', 'cta_click', {
+        button_name: 'program',
+        page_section: 'hero'
+      });
+    }
   });
 }
-
-// 3. Посещение страницы не менее 30 секунд
-setTimeout(() => {
-  sendEvent('read_30s', {
-    page_location: window.location.href,
-    page_title: document.title
-  });
-}, 30000);
-
-// 4. Ошибка проверки формы
-document.querySelectorAll('form').forEach((form) => {
-  form.addEventListener('invalid', () => {
-    sendEvent('form_error', {
-      form_id: form.id || '(no id)',
-      page_location: window.location.href
-    });
-  }, true);
-});
